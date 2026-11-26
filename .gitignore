@@ -1,0 +1,11 @@
+target/
+node_modules/
+.local/
+.idea/
+.vscode/
+*.log
+.env
+/FOLIO_INTERNALS.md
+/frontend/dist/
+.vercel/
+.env.*

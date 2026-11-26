@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: folio-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /api/status
+    envVars:
+      - key: FOLIO_BIND
+        value: 0.0.0.0
+      - key: JAVA_TOOL_OPTIONS
+        value: "-XX:MaxRAMPercentage=55 -XX:ActiveProcessorCount=2"
+      - key: SPRING_PROFILES_ACTIVE
+        value: render
