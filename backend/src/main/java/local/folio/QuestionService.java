@@ -42,7 +42,8 @@ public class QuestionService {
         String lowerQuestion = question.toLowerCase(Locale.ROOT);
         boolean overview = OVERVIEW.matcher(lowerQuestion).find();
         var overviewTerms = Set.of("summarize", "summarise", "summary", "compare", "overview", "main",
-                "key", "point", "detail", "finding", "takeaway", "topic", "theme", "difference", "between");
+                "key", "point", "detail", "finding", "takeaway", "topic", "theme", "difference", "between",
+                "attachment", "attached", "upload", "uploaded", "content", "entire", "whole", "it", "its");
         if (overview) query.removeAll(overviewTerms);
 
         if (overview && query.isEmpty()) {
