@@ -11,6 +11,8 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Service;
+import dev.langchain4j.data.segment.TextSegment;
+import dev.langchain4j.model.embedding.onnx.allminilml6v2q.AllMiniLmL6V2QuantizedEmbeddingModel;
 
 @Service
 public class QuestionService {
@@ -24,6 +26,12 @@ public class QuestionService {
     private static final Pattern OVERVIEW = Pattern.compile(
             "\\b(summari[sz]e|summary|overview)\\b|\\bwhat (are|is) (the )?(main|key)\\b");
     private final LocalModel model;
+    private volatile AllMiniLmL6V2QuantizedEmbeddingModel embeddingModel;
+
+    private synchronized AllMiniLmL6V2QuantizedEmbeddingModel embeddingModel() {
+        if (embeddingModel == null) embeddingModel = new AllMiniLmL6V2QuantizedEmbeddingModel();
+        return embeddingModel;
+    }
 
     public QuestionService(LocalModel model) {
         this.model = model;
@@ -54,7 +62,8 @@ public class QuestionService {
             }
         }
 
-        var scored = new ArrayList<ScoredPassage>();
+        var lexicalScores = new ArrayList<Double>();
+        double maxLexicalScore = 0;
         for (Passage passage : candidates) {
             double score = 0;
             for (String term : query) {
@@ -62,7 +71,40 @@ public class QuestionService {
                 if (passage.terms().contains(term)) score += weight;
                 if (passage.locationTerms().contains(term)) score += weight * 0.22;
             }
-            if (score > 0) scored.add(new ScoredPassage(passage, score));
+            lexicalScores.add(score);
+            maxLexicalScore = Math.max(maxLexicalScore, score);
+        }
+
+        double[] similarities = new double[candidates.size()];
+        try {
+            var embedder = embeddingModel();
+            float[] questionVector = embedder.embed(question).content().vector();
+            for (int start = 0; start < candidates.size(); start += 32) {
+                int end = Math.min(start + 32, candidates.size());
+                var segments = candidates.subList(start, end).stream()
+                        .map(passage -> TextSegment.from(passage.source().excerpt())).toList();
+                var vectors = embedder.embedAll(segments).content();
+                for (int i = 0; i < vectors.size(); i++) {
+                    float[] vector = vectors.get(i).vector();
+                    double dot = 0, left = 0, right = 0;
+                    for (int j = 0; j < vector.length; j++) {
+                        dot += questionVector[j] * vector[j];
+                        left += questionVector[j] * questionVector[j];
+                        right += vector[j] * vector[j];
+                    }
+                    if (left > 0 && right > 0) similarities[start + i] = dot / Math.sqrt(left * right);
+                }
+            }
+        } catch (RuntimeException | LinkageError exception) {
+            System.err.println("Embedding retrieval unavailable: " + exception.getClass().getName());
+        }
+
+        var scored = new ArrayList<ScoredPassage>();
+        for (int i = 0; i < candidates.size(); i++) {
+            double keyword = maxLexicalScore > 0 ? lexicalScores.get(i) / maxLexicalScore : 0;
+            double semantic = similarities[i] >= 0.30 ? similarities[i] : 0;
+            double score = 0.55 * keyword + 0.45 * semantic;
+            if (score > 0) scored.add(new ScoredPassage(candidates.get(i), score));
         }
         scored.sort(Comparator.comparingDouble(ScoredPassage::score).reversed());
 
