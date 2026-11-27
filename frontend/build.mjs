@@ -20,5 +20,5 @@ const index = await readFile(new URL("./index.html", import.meta.url), "utf8");
 await Promise.all([
   writeFile(new URL("index.html", output), index.replace("<head>", '<head>\n  <meta http-equiv="Content-Security-Policy" content="' + policy + '">')),
   writeFile(new URL("config.js", output), "window.FOLIO_API_BASE = " + JSON.stringify(api.origin) + ";\n"),
-  ...["app.js", "styles.css"].map(file => copyFile(new URL(file, import.meta.url), new URL(file, output)))
+  ...["app.js", "styles.css", "workflow.html"].map(file => copyFile(new URL(file, import.meta.url), new URL(file, output)))
 ]);

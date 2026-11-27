@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Folio · How it works</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="workflow-page">
+  <header class="workspace-bar">
+    <a class="workflow-link" href="/">Open workspace <span aria-hidden="true">↗</span></a>
+  </header>
+  <main class="workflow-main">
+    <h1>How Folio works</h1>
+    <p class="workflow-intro">Follow your files from upload to a sourced answer.</p>
+    <ol class="workflow-map">
+      <li><strong>Extract the file</strong><p>Folio’s Java backend reads text, pages, and spreadsheet rows. The workspace keeps extracted content in browser memory.</p></li>
+      <li><strong>Select the evidence</strong><p>Folio uses keyword and semantic search to find relevant passages. Short files can fit in full. Longer summaries use samples from across the file.</p>
+        <div class="workflow-branch"><strong>Spreadsheet calculation</strong><p>For supported calculations, Java works directly from workbook rows and returns the result without sending them to Groq.</p></div>
+      </li>
+      <li><strong>Mask detected identifiers</strong><p>Before calling Groq, the backend replaces filenames and detected identifiers in the evidence, question, and follow-up context with temporary placeholders.</p>
+        <p class="workflow-example"><code>maya@example.com</code> <span aria-label="becomes">→</span> <code>FOLIO_…_END</code></p></li>
+      <li class="workflow-external"><strong>Generate the answer with Groq</strong><p>Groq receives the masked prompt and writes an answer using numbered source passages.</p></li>
+      <li><strong>Restore values and show sources</strong><p>Folio restores recognized placeholders on the backend and displays the answer alongside its source excerpts. It discards the mapping after the request.</p></li>
+    </ol>
+    <aside class="workflow-note" aria-labelledby="masking-limit">
+      <h2 id="masking-limit">What masking can miss</h2>
+      <p>Detection is best effort. Names without labels, unusual identifiers, and confidential facts in ordinary prose can still reach Groq. Source excerpts shown in your workspace contain the original text.</p>
+    </aside>
+  </main>
+</body>
+</html>

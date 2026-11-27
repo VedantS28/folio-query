@@ -45,7 +45,7 @@ If the local model is unavailable, Folio returns matching excerpts. Use `backend
 
 Save one unquoted `GROQ_API_KEY=...` line in `backend/.env`, then start or restart the Java service with `backend/start.ps1`. The file is excluded from Git and the backend Docker build context. For a direct JAR run or a deployment, set `GROQ_API_KEY` as a secret environment variable on the Java service.
 
-When a key is present, Folio uses `openai/gpt-oss-20b` and sends the question and selected excerpts to Groq. The header displays **Groq AI**. If generation fails or the quota is reached, Folio displays matching excerpts. Use `-LocalOnly` to use the local model or `-ExcerptsOnly` for source search without a model.
+When a key is present, Folio uses `openai/gpt-oss-20b` and sends the question and selected excerpts to Groq after best-effort masking. Folio masks filenames and detected identifiers, then restores recognized placeholders in the answer. Confidential prose and undetected identifiers can still be sent. Open **How it works** in the workspace to see the data flow. The header displays **Groq AI**. If generation fails or the quota is reached, Folio displays matching excerpts. Use `-LocalOnly` to use the local model or `-ExcerptsOnly` for source search without a model.
 
 ## Deploy independently
 

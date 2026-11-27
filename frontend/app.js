@@ -52,7 +52,7 @@ async function checkConnection() {
     state.modelProvider = response.modelProvider ?? (response.modelConfigured ? "local" : "none");
     const labels = { groq: "Groq AI", local: "Local AI", none: "Source search" };
     const descriptions = {
-      groq: "Questions and selected passages are sent to Groq.",
+      groq: "Folio applies best-effort masking before sending questions and selected passages to Groq.",
       local: "Local AI configured. Source search is available as a fallback.",
       none: "Answers show matching passages from your files."
     };
@@ -257,7 +257,7 @@ function openComparison() {
   elements["compare-explain"].checked = false;
   elements["explain-option"].hidden = state.modelProvider === "none";
   elements["explain-label"].textContent = state.modelProvider === "groq"
-    ? "Send sample changes to Groq for an explanation"
+    ? "Send sample changes to Groq after best-effort masking"
     : "Explain a sample of changes with the local model";
   elements["compare-dialog"].showModal();
 }
