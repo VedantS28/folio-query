@@ -57,7 +57,7 @@ The API returns a `Document` with `name`, `format`, `sections`, `truncated`, and
 
 ## 2. Ask a question
 
-`POST /api/ask` takes JSON with `question` and `documents`. Each array item is the extracted `Document` from the upload step. The API accepts up to **eight documents**, a **1,200-character question**, and a **6 MiB request body**. Previous answers stay in the browser interface and are absent from this request.
+`POST /api/ask` takes JSON with `question`, `documents`, and optional `previousQuestions`. Each document is the extracted `Document` from the upload step. The API accepts up to **eight documents**, a **1,200-character question**, up to two previous user questions of the same limit, and a **6 MiB request body**. The browser clears question context when files change. Previous assistant answers stay in the browser and are absent from this request. For pronoun follow-ups, recent questions help resolve the reference; they are not evidence for the answer. An explicitly mentioned filename or unique filename stem scopes the request to that file. A follow-up can refer back to the last explicitly named file in the bounded history.
 
 ### Excel calculation
 
@@ -67,7 +67,7 @@ Java uses `BigDecimal` for numeric calculations. It reports how many rows contri
 
 ### Document retrieval and generation
 
-If the question doesn't match a spreadsheet command, [QuestionService](src/main/java/local/folio/QuestionService.java) splits the extracted text into passages and ranks them by keyword overlap. Rare terms count more, with a smaller bonus for filename and location matches. It retains up to eight distinct sources at or above 42% of the top score. Broad prompts like “Summarize the files” use opening excerpts and, when space remains, excerpts from near the end.
+If the question does not match a spreadsheet command, [QuestionService](src/main/java/local/folio/QuestionService.java) prepares passages with nearby lines and source locations. Short documents can be sent in full. Broader documents use keyword ranking together with locally generated MiniLM embeddings, when the embedding runtime is available. Semantic and keyword scores are combined, and a request falls back to keyword ranking if embeddings fail. General summaries sample passages from across the documents within a bounded context budget. Large documents may therefore have details outside the context supplied to the model.
 
 [LocalModel](src/main/java/local/folio/LocalModel.java) uses the current question and numbered excerpts to request a concise answer. When `GROQ_API_KEY` is configured, it calls GPT-OSS 20B with low reasoning effort and a 768-token completion budget. The browser receives the generated text plus the original selected excerpts. Use the source cards to check the answer. A source card shows what the model could see, and Folio does not verify generated claims against those excerpts.
 

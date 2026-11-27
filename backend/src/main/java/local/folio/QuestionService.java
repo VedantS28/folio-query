@@ -1,6 +1,5 @@
 package local.folio;
 
-import java.text.BreakIterator;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -22,7 +21,7 @@ public class QuestionService {
             "document", "documents", "file", "files", "for", "from", "give", "has", "have", "how", "i", "in",
             "is", "it", "just", "me", "of", "on", "or", "please", "say", "says", "show", "tell", "than", "that",
             "the", "their", "these", "this", "to", "was", "were", "what", "when", "where", "which", "who",
-            "why", "will", "with", "would", "you", "your", "all", "text", "resume", "caan");
+            "why", "will", "with", "would", "you", "your", "all", "caan");
     private static final Pattern OVERVIEW = Pattern.compile(
             "\\b(summari[sz]e|summary|overview)\\b|\\bwhat (are|is) (the )?(main|key)\\b");
     private final LocalModel model;
@@ -38,16 +37,31 @@ public class QuestionService {
     }
 
     public Answer answer(String question, List<Document> documents) {
-        Set<String> query = terms(question);
+        return answer(question, documents, question);
+    }
+
+    public Answer answer(String question, List<Document> documents, String retrievalQuestion) {
+        Set<String> query = terms(retrievalQuestion);
         String lowerQuestion = question.toLowerCase(Locale.ROOT);
         boolean overview = OVERVIEW.matcher(lowerQuestion).find();
         var overviewTerms = Set.of("summarize", "summarise", "summary", "compare", "overview", "main",
                 "key", "point", "detail", "finding", "takeaway", "topic", "theme", "difference", "between",
-                "attachment", "attached", "upload", "uploaded", "content", "entire", "whole", "it", "its");
+                "attachment", "attached", "upload", "uploaded", "content", "entire", "whole", "text", "resume", "it", "its");
         if (overview) query.removeAll(overviewTerms);
 
+        int totalCharacters = documents.stream().flatMap(document -> document.sections().stream())
+                .mapToInt(section -> section.text().length()).sum();
+        if (totalCharacters <= 10000 && documents.stream().mapToInt(document -> document.sections().size()).sum() <= 8) {
+            var sources = new ArrayList<Source>();
+            for (Document document : documents) {
+                for (Document.Section section : document.sections()) {
+                    sources.add(new Source(document.name(), section.label().isEmpty() ? "Document" : section.label(), section.text()));
+                }
+            }
+            return respond(question, sources, sources.size(), overview, retrievalQuestion);
+        }
         if (overview && query.isEmpty()) {
-            return respond(question, overviewSources(documents), documents.size(), true);
+            return respond(question, overviewSources(documents), documents.size(), true, retrievalQuestion);
         }
 
         var candidates = new ArrayList<Passage>();
@@ -79,7 +93,7 @@ public class QuestionService {
         double[] similarities = new double[candidates.size()];
         try {
             var embedder = embeddingModel();
-            float[] questionVector = embedder.embed(question).content().vector();
+            float[] questionVector = embedder.embed(retrievalQuestion).content().vector();
             for (int start = 0; start < candidates.size(); start += 32) {
                 int end = Math.min(start + 32, candidates.size());
                 var segments = candidates.subList(start, end).stream()
@@ -115,7 +129,11 @@ public class QuestionService {
             var seen = new HashSet<Source>();
             for (ScoredPassage candidate : scored) {
                 if (selected.size() == 8 || candidate.score() < cutoff) break;
-                if (seen.add(candidate.passage().source())) selected.add(candidate.passage());
+                Source source = candidate.passage().source();
+                boolean overlap = selected.stream().map(Passage::source)
+                        .anyMatch(other -> other.file().equals(source.file()) && other.location().equals(source.location())
+                                && (other.excerpt().contains(source.excerpt()) || source.excerpt().contains(other.excerpt())));
+                if (!overlap && seen.add(source)) selected.add(candidate.passage());
             }
         }
         List<Source> context = selected.stream().map(Passage::source).toList();
@@ -124,11 +142,11 @@ public class QuestionService {
                     + "column heading, or phrase used in the source.", List.of(), "no-match");
         }
 
-        return respond(question, context, overview ? Math.max(4, documents.size()) : 4, overview);
+        return respond(question, context, overview ? Math.max(4, documents.size()) : 4, overview, retrievalQuestion);
     }
 
-    private Answer respond(String question, List<Source> context, int excerptCount, boolean overview) {
-        var generated = model.answer(question, context);
+    private Answer respond(String question, List<Source> context, int excerptCount, boolean overview, String retrievalQuestion) {
+        var generated = model.answer(question, context, retrievalQuestion);
         if (generated.isPresent()) {
             return new Answer(generated.get(), context, model.usesGroq() ? "groq-ai" : "local-ai");
         }
@@ -140,64 +158,59 @@ public class QuestionService {
 
     private static List<Source> overviewSources(List<Document> documents) {
         var sources = new ArrayList<Source>();
+        int slotsPerDocument = Math.max(1, 8 / documents.size());
+        int perSource = 12000 / (slotsPerDocument * documents.size());
         for (Document document : documents) {
-            var first = document.sections().get(0);
-            String location = first.label().isEmpty() ? "Start of file" : first.label();
-            sources.add(new Source(document.name(), location, abbreviate(first.text(), 700)));
-        }
-        for (Document document : documents) {
-            if (sources.size() == 8) break;
-            var last = document.sections().get(document.sections().size() - 1);
-            if (document.sections().size() > 1) {
-                sources.add(new Source(document.name(), last.label(), abbreviate(last.text(), 700)));
-            } else if (last.text().length() > 1_400) {
-                int start = last.text().length() - 700;
-                if (Character.isLowSurrogate(last.text().charAt(start))) start++;
-                sources.add(new Source(document.name(), "End of file", last.text().substring(start)));
+            int count = document.sections().size();
+            int slots = count == 1 ? Math.min(slotsPerDocument,
+                    Math.max(1, (document.sections().get(0).text().length() + perSource - 1) / perSource))
+                    : Math.min(count, slotsPerDocument);
+            for (int index = 0; index < slots; index++) {
+                int sectionIndex = count == 1 ? 0 : slots == 1 ? 0 : index * (count - 1) / (slots - 1);
+                if (count > 1 && slots >= 3 && index == slots / 2) sectionIndex = count / 2;
+                var section = document.sections().get(sectionIndex);
+                String text = section.text();
+                int start = count == 1 && slots > 1 ? index * Math.max(0, text.length() - perSource) / (slots - 1) : 0;
+                if (count == 1 && slots >= 3 && index == slots / 2) start = Math.max(0, (text.length() - perSource) / 2);
+                if (start > 0 && Character.isLowSurrogate(text.charAt(start))) start++;
+                String label = section.label().isEmpty() ? "Document" : section.label();
+                if (count == 1 && slots > 1) label += " (part " + (index + 1) + ")";
+                sources.add(new Source(document.name(), label, abbreviate(text.substring(start), perSource)));
             }
         }
         return sources;
     }
 
     private static void addPassages(List<Passage> target, Document document, Document.Section section) {
-        String text = section.text();
+        String[] lines = section.text().split("\\n", -1);
         Set<String> locationTerms = terms(document.name() + " " + section.label());
-        boolean table = document.format().equals("xlsx") || document.format().equals("xls");
-        String tableHeader = table ? text.lines().findFirst().orElse("") : "";
-        int lineNumber = 1;
-        String[] lines = text.split("\n");
-        for (String rawLine : lines) {
-            String line = rawLine.strip();
-            if (!line.isEmpty()) {
-                var sentences = BreakIterator.getSentenceInstance(Locale.ROOT);
-                sentences.setText(line);
-                for (int start = sentences.first(), end = sentences.next(); end != BreakIterator.DONE;
-                     start = end, end = sentences.next()) {
-                    for (int chunk = start; chunk < end;) {
-                        int limit = Math.min(chunk + 600, end);
-                        if (limit < end && Character.isHighSurrogate(line.charAt(limit - 1))) limit--;
-                        String excerpt = line.substring(chunk, limit).strip();
-                        if (!excerpt.isEmpty()) {
-                            String location = section.label().isEmpty() ? "Line " + lineNumber : section.label();
-                            String supportingText = excerpt;
-                            if (table && lineNumber > 1) {
-                                supportingText = abbreviate(tableHeader, 350) + "\n" + excerpt;
-                            } else if (!table && line.length() < 100 && lineNumber < lines.length) {
-                                var context = new StringBuilder(excerpt);
-                                for (int next = lineNumber; next < Math.min(lines.length, lineNumber + 8); next++) {
-                                    if (lines[next].isBlank()) break;
-                                    context.append("\n").append(lines[next].strip());
-                                }
-                                supportingText = abbreviate(context.toString(), 1500);
-                            }
-                            target.add(new Passage(new Source(document.name(), location, supportingText),
-                                    terms(supportingText), locationTerms));
-                        }
-                        chunk = limit;
-                    }
-                }
+        boolean table = Set.of("xlsx", "xls", "csv", "tsv").contains(document.format());
+        String tableHeader = table ? lines[0] : "";
+        StringBuilder chunk = new StringBuilder();
+        int firstLine = 1;
+        for (int i = 0; i <= lines.length; i++) {
+            String line = i < lines.length ? lines[i].stripTrailing() : "";
+            if (chunk.length() > 0 && (line.isBlank() || chunk.length() + line.length() > 900)) {
+                addChunk(target, document, section, chunk.toString(), firstLine, tableHeader, locationTerms);
+                chunk.setLength(0);
             }
-            lineNumber++;
+            if (line.isBlank()) continue;
+            if (chunk.length() == 0) firstLine = i + 1;
+            if (chunk.length() > 0) chunk.append('\n');
+            chunk.append(line);
+        }
+    }
+
+    private static void addChunk(List<Passage> target, Document document, Document.Section section,
+                                 String text, int firstLine, String tableHeader, Set<String> locationTerms) {
+        for (int start = 0; start < text.length();) {
+            int end = Math.min(start + 1500, text.length());
+            if (end < text.length() && Character.isHighSurrogate(text.charAt(end - 1))) end--;
+            String excerpt = text.substring(start, end).stripTrailing();
+            if (firstLine > 1 && !tableHeader.isEmpty()) excerpt = abbreviate(tableHeader, 350) + "\n" + excerpt;
+            String location = section.label().isEmpty() ? "Line " + firstLine : section.label() + " · Line " + firstLine;
+            target.add(new Passage(new Source(document.name(), location, excerpt), terms(excerpt), locationTerms));
+            start = end;
         }
     }
 

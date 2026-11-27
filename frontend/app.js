@@ -11,6 +11,7 @@ const maxFiles = 8;
 const maxBytes = 5 * 1024 * 1024;
 const state = {
   files: [],
+  previousQuestions: [],
   controller: new AbortController(),
   uploading: false,
   asking: false,
@@ -100,6 +101,7 @@ function renderFiles() {
     remove.append(icon("close"));
     remove.addEventListener("click", () => {
       state.files = state.files.filter(file => file !== entry);
+      state.previousQuestions = [];
       renderFiles();
       elements["drop-zone"].focus();
     });
@@ -146,6 +148,7 @@ async function upload(files) {
       });
       if (controller.signal.aborted) return;
       state.files.push({ document, size: file.size, key: fileKey(file) });
+      state.previousQuestions = [];
       renderFiles();
     } catch (error) {
       if (controller.signal.aborted) return;
@@ -192,6 +195,8 @@ async function ask() {
   if (!question || state.asking || state.uploading || !state.files.length) return;
   const controller = state.controller;
   const documents = state.files.map(entry => entry.document);
+  const fileSnapshot = state.files.slice();
+  const previousQuestions = state.previousQuestions.slice(-2);
   state.asking = true;
   renderMessage("user", question);
   elements.question.value = "";
@@ -203,10 +208,13 @@ async function ask() {
     const answer = await request("/api/ask", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, documents }),
+      body: JSON.stringify({ question, documents, previousQuestions }),
       signal: controller.signal
     });
     if (controller.signal.aborted) return;
+    if (state.files.length === fileSnapshot.length && state.files.every((file, index) => file === fileSnapshot[index])) {
+      state.previousQuestions = [...previousQuestions, question].slice(-2);
+    }
     const title = { "groq-ai": "Groq AI answer", spreadsheet: "Spreadsheet calculation", "local-ai": "Local AI answer", excerpts: "Source passages", "no-match": "No matching passages" };
     pending.bubble.replaceChildren(element("span", "mode", title[answer.mode]), element("p", "", answer.text));
     answer.sources.forEach((source, index) => {
@@ -386,6 +394,7 @@ function clearWorkspace() {
   state.controller.abort();
   state.controller = new AbortController();
   state.files = [];
+  state.previousQuestions = [];
   state.asking = false;
   state.uploading = false;
   elements["upload-notice"].textContent = "";

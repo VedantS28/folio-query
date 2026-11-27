@@ -25,7 +25,7 @@ Open [Folio](http://127.0.0.1:4173/). The Java API listens at `http://127.0.0.1:
 
 Upload up to eight files of up to 5 MiB each. Supported formats include PDF with a text layer, Excel (`.xls` and `.xlsx`), Word (`.docx`), CSV, TSV, Markdown, plain text, and common programming languages. Files are limited to 100,000 extracted characters and 350 sections each. Folio marks truncated files in the sidebar. Excel formulas use cached workbook values.
 
-Use names or terms from your files in your question. Open the numbered citations to see the supporting page, sheet, or line. Each question uses the current set of files. Include any earlier context in follow-up questions that refer to previous answers.
+Use names or terms from your files in your question. Open the numbered citations to see the supporting page, sheet, or line. Each question uses the current set of files. Folio uses recent questions to help interpret pronouns in follow-ups. Adding or removing files clears that context.
 
 Folio holds extracted content and chat in browser memory. Reloading the page, clearing the workspace, or closing the tab discards it. The Java API processes requests in memory, with no database or retained uploads.
 

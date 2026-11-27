@@ -2,7 +2,9 @@ package local.folio;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -67,8 +69,46 @@ public class WorkspaceController {
         var input = jsonBody(request, Question.class);
         validate(input);
         String question = input.question().strip();
-        return spreadsheet.answer(question, input.documents())
-                .orElseGet(() -> questions.answer(question, input.documents()));
+        boolean followUp = input.previousQuestions() != null && !input.previousQuestions().isEmpty()
+                && question.matches("(?is).*\\b(he|him|his|she|her|hers|they|them|their|theirs|it|its|those|these|that|this)\\b.*");
+        String context = followUp
+                ? "Previous user questions: " + String.join(" | ", input.previousQuestions())
+                        + "\nCurrent question: " + question
+                : question;
+        List<Document> selected = mentionedDocuments(question, input.documents());
+        if (selected.size() == input.documents().size() && followUp) {
+            for (int i = input.previousQuestions().size() - 1; i >= 0; i--) {
+                List<Document> previousSelection = mentionedDocuments(input.previousQuestions().get(i), input.documents());
+                if (previousSelection.size() < input.documents().size()) {
+                    selected = previousSelection;
+                    break;
+                }
+            }
+        }
+        List<Document> documents = selected;
+        return spreadsheet.answer(question, documents)
+                .orElseGet(() -> questions.answer(question, documents, context));
+    }
+
+    private static List<Document> mentionedDocuments(String question, List<Document> documents) {
+        if (documents.size() < 2) return documents;
+        String lower = question.toLowerCase(Locale.ROOT);
+        List<Document> exact = documents.stream()
+                .filter(document -> containsName(lower, document.name().toLowerCase(Locale.ROOT)))
+                .toList();
+        if (!exact.isEmpty()) return exact;
+        List<Document> stems = documents.stream().filter(document -> {
+            String name = document.name().toLowerCase(Locale.ROOT);
+            int dot = name.lastIndexOf('.');
+            String stem = dot > 0 ? name.substring(0, dot) : name;
+            return stem.length() >= 4 && containsName(lower, stem);
+        }).toList();
+        return stems.size() == 1 ? stems : documents;
+    }
+
+    private static boolean containsName(String text, String name) {
+        return Pattern.compile("(?<![\\p{L}\\p{N}_])" + Pattern.quote(name)
+                + "(?![\\p{L}\\p{N}_])").matcher(text).find();
     }
 
     @PostMapping(path = "/api/compare", consumes = MediaType.APPLICATION_JSON_VALUE)
@@ -108,6 +148,11 @@ public class WorkspaceController {
         }
         if (input.documents() == null || input.documents().isEmpty() || input.documents().size() > MAX_FILES) {
             throw new IllegalArgumentException("Add between 1 and 8 files.");
+        }
+        if (input.previousQuestions() != null && (input.previousQuestions().size() > 2
+                || input.previousQuestions().stream().anyMatch(previous -> previous == null || previous.isBlank()
+                        || previous.length() > 1200))) {
+            throw new IllegalArgumentException("Invalid conversation context.");
         }
         input.documents().forEach(WorkspaceController::validateDocument);
     }
@@ -166,6 +211,6 @@ public class WorkspaceController {
                 && name.codePoints().noneMatch(Character::isISOControl);
     }
 
-    public record Question(String question, List<Document> documents) {}
+    public record Question(String question, List<Document> documents, List<String> previousQuestions) {}
     public record Comparison(Document before, Document after, boolean explain) {}
 }
