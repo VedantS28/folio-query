@@ -227,6 +227,24 @@ svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; s
   font-weight: 600;
   text-underline-offset: 3px;
 }
+.workflow-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 37px;
+  flex: none;
+  margin-right: auto;
+  padding: 7px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--soft);
+  text-decoration: none;
+}
+.workflow-entry:hover { background: var(--yellow); }
+@media (max-width: 390px) {
+  .workspace-bar:has(.workflow-entry) { flex-wrap: wrap; gap: 7px; }
+  .workflow-entry { padding-inline: 8px; }
+}
 .workflow-page { display: block; background: var(--pale); }
 .workflow-main { max-width: 800px; margin: auto; padding: clamp(28px, 6vw, 64px) clamp(18px, 4vw, 40px); }
 .workflow-main h1 { margin: 0; font-size: clamp(2rem, 5vw, 3.25rem); line-height: 1.1; }
