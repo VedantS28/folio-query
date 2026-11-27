@@ -20,10 +20,9 @@ public class QuestionService {
             "document", "documents", "file", "files", "for", "from", "give", "has", "have", "how", "i", "in",
             "is", "it", "just", "me", "of", "on", "or", "please", "say", "says", "show", "tell", "than", "that",
             "the", "their", "these", "this", "to", "was", "were", "what", "when", "where", "which", "who",
-            "why", "will", "with", "would", "you", "your");
+            "why", "will", "with", "would", "you", "your", "all", "text", "resume", "caan");
     private static final Pattern OVERVIEW = Pattern.compile(
-            "^(please\\s+)?((summari[sz]e|compare)\\b|(give me )?(an )?overview\\b|"
-                    + "what (are|is) (the )?(main|key)\\b)");
+            "\\b(summari[sz]e|summary|overview)\\b|\\bwhat (are|is) (the )?(main|key)\\b");
     private final LocalModel model;
 
     public QuestionService(LocalModel model) {
@@ -123,7 +122,8 @@ public class QuestionService {
         boolean table = document.format().equals("xlsx") || document.format().equals("xls");
         String tableHeader = table ? text.lines().findFirst().orElse("") : "";
         int lineNumber = 1;
-        for (String rawLine : text.split("\n")) {
+        String[] lines = text.split("\n");
+        for (String rawLine : lines) {
             String line = rawLine.strip();
             if (!line.isEmpty()) {
                 var sentences = BreakIterator.getSentenceInstance(Locale.ROOT);
@@ -136,8 +136,17 @@ public class QuestionService {
                         String excerpt = line.substring(chunk, limit).strip();
                         if (!excerpt.isEmpty()) {
                             String location = section.label().isEmpty() ? "Line " + lineNumber : section.label();
-                            String supportingText = table && lineNumber > 1
-                                    ? abbreviate(tableHeader, 350) + "\n" + excerpt : excerpt;
+                            String supportingText = excerpt;
+                            if (table && lineNumber > 1) {
+                                supportingText = abbreviate(tableHeader, 350) + "\n" + excerpt;
+                            } else if (!table && line.length() < 100 && lineNumber < lines.length) {
+                                var context = new StringBuilder(excerpt);
+                                for (int next = lineNumber; next < Math.min(lines.length, lineNumber + 8); next++) {
+                                    if (lines[next].isBlank()) break;
+                                    context.append("\n").append(lines[next].strip());
+                                }
+                                supportingText = abbreviate(context.toString(), 1500);
+                            }
                             target.add(new Passage(new Source(document.name(), location, supportingText),
                                     terms(supportingText), locationTerms));
                         }
